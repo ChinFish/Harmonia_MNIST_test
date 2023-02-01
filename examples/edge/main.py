@@ -6,10 +6,8 @@ import random
 import grpc
 import service_pb2
 import service_pb2_grpc
-#import mnist
-#import torch
-import train_Fed
-import tensorflow as tf
+import mnist
+import torch
 
 OPERATOR_URI = os.getenv('OPERATOR_URI', "localhost:8787")
 APPLICATION_URI = "0.0.0.0:7878"
@@ -23,7 +21,7 @@ def get_training_data():
     return __DATA
 
 def train(baseModel, output_model_path, epochs=1):
-    data = 'train/chr22_train_TWB_100.hap'
+    data = get_training_data()
     output = os.path.join("/repos", output_model_path, 'weights.tar')
     logging.info(f'input path: [{baseModel.path}]')
     logging.info(f'output path: [{output}]')
@@ -31,15 +29,14 @@ def train(baseModel, output_model_path, epochs=1):
 
     base_weight_path = os.path.join("/repos", baseModel.path, "weights.tar")
     try:
-        #metrics = mnist.train(data, output, epochs=epochs, resume=base_weight_path)
-        metrics = train_Fed.gain(data, output, epochs=epochs, resume=base_weight_path)
+        metrics = mnist.train(data, output, epochs=epochs, resume=base_weight_path)
     except Exception as err:
         # print('metrics', err)
         logging.debug("metrics ERR : {}".format(err))
 
     # Send finish message
     logging.info(f"GRPC_CLIENT_URI: {OPERATOR_URI}")
-    #logging.debug("metrics: {}".format(metrics))
+    logging.debug("metrics: {}".format(metrics))
     try:
         channel = grpc.insecure_channel(OPERATOR_URI)
         stub = service_pb2_grpc.EdgeOperatorStub(channel)
@@ -55,7 +52,7 @@ def train(baseModel, output_model_path, epochs=1):
     except Exception as err:
         logging.error('got error: {}'.format(err))
 
-    #logging.debug("sending grpc message succeeds, response: {}".format(response))
+    logging.debug("sending grpc message succeeds, response: {}".format(response))
 
 
 class EdgeAppServicer(service_pb2_grpc.EdgeAppServicer):
@@ -93,7 +90,7 @@ def serve():
 
     logging.info("Start server... {}".format(APPLICATION_URI))
 
-    if(tf.test.is_gpu_available()):
+    if(torch.cuda.is_available()):
         logging.info("GPU: True")
     else:
         logging.info("GPU: False")
@@ -109,8 +106,4 @@ def serve():
     server.stop(None)
 
 if __name__ == "__main__":
-    #serve()
-    metrics = train_Fed.gain(data='train/chr22_train_TWB_100.hap',
-                   output = r'C:\Users\yayalouis123\Desktop\harmonia\src\fedavg\Aggregate_test\model_3',
-                   epochs=1)
-    print(metrics)
+    serve()

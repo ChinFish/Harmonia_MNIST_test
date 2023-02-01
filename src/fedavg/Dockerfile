@@ -1,11 +1,7 @@
-FROM tensorflow/tensorflow
+FROM pytorch/pytorch
 
 RUN pip install -U pip && \
-    pip install grpcio grpcio-tools \
-    pip install protobuf==3.20.* \
-    pip install numpy
-    
-ADD . /app
-ADD ./train /train
+    pip install grpcio grpcio-tools
 
-ENTRYPOINT [ "python", "/app/main.py" ]
+ADD . /app
+ENTRYPOINT [ "python3", "/app/main.py" ]

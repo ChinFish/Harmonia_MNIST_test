@@ -3,17 +3,15 @@ import logging
 import threading
 import os
 import grpc
+import merge
 import service_pb2
 import service_pb2_grpc
-from merge import merge
-from merge_test import gain
 
 OPERATOR_URI = os.getenv('OPERATOR_URI', '127.0.0.1:8787')
 APPLICATION_URI = os.getenv('APPLICATION_URI', '0.0.0.0:7878')
-LOG_LEVEL = os.environ.get('LOG_LEVEL', 'DEBUG')
+LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
 REPO_ROOT = os.environ.get('REPO_ROOT', '/repos')
-G_MODEL_FILENAME = os.environ.get('MODEL_FILENAME', 'weights.tar_G')
-D_MODEL_FILENAME = os.environ.get('MODEL_FILENAME', 'weights.tar_D')
+MODEL_FILENAME = os.environ.get('MODEL_FILENAME', 'weights.tar')
 STOP_EVENT = threading.Event()
 
 AGGREGATE_SUCCESS = 0
@@ -27,8 +25,7 @@ def send_result(err):
     try:
         channel = grpc.insecure_channel(OPERATOR_URI)
         stub = service_pb2_grpc.AggregateServerOperatorStub(channel)
-        res = service_pb2.AggregateResult(error=err)
-
+        res = service_pb2.AggregateResult(error=err,)
         response = stub.AggregateFinish(res)
     except grpc.RpcError as rpc_error:
         logging.error("grpc error: [%s]", rpc_error)
@@ -42,52 +39,18 @@ def aggregate(local_models, aggregated_model):
         send_result(AGGREGATE_FAIL)
         return
 
-    models_D = []
-    models_G = []
-    #logging.debug("local models:",local_models)
+    models = []
     for local_model in local_models:
-        path_G = os.path.join(REPO_ROOT, local_model.path, G_MODEL_FILENAME)
-        path_D = os.path.join(REPO_ROOT, local_model.path, D_MODEL_FILENAME)
-        #if os.path.isfile(path_G):
-        
-        models_G.append({'path_G': path_G, 'size_G': local_model.datasetSize})
-        #if os.path.isfile(path_D):
-        models_D.append({'path_D': path_D, 'size_D': local_model.datasetSize})
-        #logging.debug('path_G',path_G)
-        #logging.debug('path_D',path_D)
-    output_path_G = os.path.join(REPO_ROOT, aggregated_model.path, G_MODEL_FILENAME)
-    output_path_D = os.path.join(REPO_ROOT, aggregated_model.path, D_MODEL_FILENAME)
-    output_path = os.path.join("/repos", aggregated_model.path, "weights.tar")
+        path = os.path.join(REPO_ROOT, local_model.path, MODEL_FILENAME)
+        if os.path.isfile(path):
+            models.append({'path': path, 'size': local_model.datasetSize})
+    output_path = os.path.join(REPO_ROOT, aggregated_model.path, MODEL_FILENAME)
 
-    logging.debug("models_D: %s", models_D)
-    logging.debug("models_G: %s", models_G)
-    logging.debug("output_path_G: %s", output_path_G)
-    logging.debug("output_path_D: %s", output_path_D)
-    merge(models_G, output_path_G,'G')
-    merge(models_D, output_path_D,'D')
-    
-    try:
-        metrics = gain('train/split2.hap', output_path)
-    except Exception as err:
-        # print('metrics', err)
-        logging.debug("metrics ERR : {}".format(err))
-    #calculate metrics
-    try:
-        channel = grpc.insecure_channel(OPERATOR_URI)
-        stub = service_pb2_grpc.AggregateServerOperatorStub(channel)
-        res = service_pb2.AggregateResult(
-                error=0,
-                metrics=metrics
-        )
-        response = stub.AggregateFinish(res)
-        
-    except grpc.RpcError as rpc_error:
-        logging.error("grpc error: {}".format(rpc_error))
-    except Exception as err:
-        logging.error('got error: {}'.format(err))
+    logging.debug("models: [%s]", models)
+    logging.debug("output_path: [%s]", output_path)
+    merge.merge(models, output_path)
 
-
-    #send_result(AGGREGATE_SUCCESS)
+    send_result(AGGREGATE_SUCCESS)
 
 class AggregateServerServicer(service_pb2_grpc.AggregateServerAppServicer):
     def Aggregate(self, request, context):
@@ -121,9 +84,4 @@ def serve():
     server.stop(None)
 
 if __name__ == "__main__":
-    # models_G = ['Aggregate_test/model_1_G', 'Aggregate_test/model_2_G', 'Aggregate_test/model_3_G']
-    # models_D = ['Aggregate_test/model_1_D', 'Aggregate_test/model_2_D', 'Aggregate_test/model_3_D']
-    #
-    # merge(models=models_G, merged_output_path='Aggregate_test/Aggregate_G', DorG="G")
-    # merge(models=models_D, merged_output_path='Aggregate_test/Aggregate_D', DorG="D")
     serve()
